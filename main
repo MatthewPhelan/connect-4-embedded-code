@@ -1,0 +1,209 @@
+#include <msp430.h> 
+#include <stdint.h> 
+#include "mtxdisp.h" 
+#include "switches.h"
+
+uint8_t BGR[8][3]={
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00}
+};
+void scorelookup(unsigned int ledNum,int player);
+void ScoreShift(unsigned int val,int player);
+int WinCondition(int P, int R,const uint8_t mtxBuf[8][3]);
+
+int main(void){
+volatile unsigned int delayCount;
+volatile unsigned long delayCount2;
+int row=0,dontchange = 0,DistanceToTop=7;
+int y,loop,GPlayer=0,RPlayer=0;
+int scoreCheck; int player = 0; uint8_t ch;
+int win = 0; 
+uint8_t BGR[8][3]={
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00},
+{0x00,0x00,0x00}
+};
+int C4[]={0x87,0x81,0xE1,0xA1,0x27};
+volatile long x;
+
+WDTCTL = WDTPW | WDTHOLD;	// Stop watchdog timer
+
+initMtx(); 
+initialiseSwitches();
+
+clearMtx();
+
+for(y=2;y<7;y++){ 
+BGR[y][0]=C4[y-2];
+lightMtx(BGR);
+}
+for(delayCount2=0; delayCount2<=100000;delayCount2++){}
+
+ 
+do{
+ 
+
+win = 0; row=0;
+dontchange = 0;
+ 
+for(y=0;y<8;y++){ 
+BGR[y][0]=0x00;
+BGR[y][1]=0x00;
+BGR[y][2]=0x00;
+lightMtx(BGR);
+}
+
+while (!win)
+{
+if(ch=readSwitches())
+{
+if(dontchange!=1){ if(player==1){
+player=2;
+}else{
+player=1;
+}
+}
+while((BGR[row][2]&ch|(BGR[row][1]&ch)!=0x00)!=0x00){ 
+row++;
+}
+if(row>7){
+dontchange = 1; 
+row=10;
+}else{
+dontchange=0;
+}
+DistanceToTop =7;
+for(DistanceToTop=7;DistanceToTop>row;DistanceToTop --){ 
+BGR[DistanceToTop][player]|=ch;
+lightMtx(BGR);
+for(delayCount2=0; delayCount2<=2000;delayCount2++){} 
+BGR[DistanceToTop][player]&=(~ch);
+}
+
+BGR[row][player] = BGR[row][player]|ch; 
+win=WinCondition(player,row,BGR); 
+row=0;
+}
+lightMtx(BGR);
+}
+if(player==1){ 
+GPlayer++;
+}else{
+RPlayer++;
+}
+//win screen section
+for(delayCount2=0; delayCount2<=100000;delayCount2++){}
+for(y=0;y<8;y++){ 
+BGR[y][player]=0x00; 
+BGR[y][player+1]=0x00; 
+BGR[y][player-1]=0x00; 
+lightMtx(BGR);
+}
+scorelookup(GPlayer,1); 
+scorelookup(RPlayer,2);
+ 
+for(delayCount=0; delayCount<=62500;delayCount++){}
+//end of win screen;
+if((GPlayer==3)||(RPlayer==3)){ if(GPlayer==3){
+BGR[7][2]=0x00;
+player=1;
+}else{
+player=2; BGR[0][1]=0x00;
+}
+for(y=0;y<8;y++){
+if((y+1)%2==1){
+BGR[y][player]=0x01;
+}else{
+BGR[y][player]=0x80;
+}
+for(loop=1;loop<8;loop++){ 
+if((y+1)%2==1){
+BGR[y][player]=(BGR[y][player]<<1)|BGR[y][player];
+}else{
+BGR[y][player]=(BGR[y][player]>>1)|BGR[y][player];
+}
+lightMtx(BGR);
+for(delayCount=0; delayCount<=7500;delayCount++){}
+}
+}
+GPlayer=0; 
+RPlayer=0;
+}
+}while(1); 
+return 0;
+}
+
+int WinCondition(int P, int R,const uint8_t mtxBuf[8][3]){  //P = player R = row
+static int win[5]={0x0F,0x1E,0x3C,0x78,0xF0}; 
+int w=0,x=0,LedOn=0x00,i,ShiftCount=3; 
+unsigned int RowHex = 0x00;
+
+uint8_t RowValue = mtxBuf[R][P]; 
+uint8_t DiagnalL = mtxBuf[R][P]; 
+uint8_t DiagnalR = mtxBuf[R][P];
+
+//horizontal win
+for(x=0;x<=4;x++){
+if((RowValue&win[x]) == win[x]){ 
+w=1;
+}
+}
+//vertical win
+if((w==0)&&(R>=3)){
+if(RowValue = mtxBuf[R][P]&mtxBuf[R-1][P]&mtxBuf[R-2][P]&mtxBuf[R-3][P]){ 
+w=1;
+}
+}
+
+//diagonal win top --> down and diagonal win down --> top
+if((RowValue= mtxBuf[R][P]& (mtxBuf[R-3][P]>>3)&(mtxBuf[R-2][P]>>2)&(mtxBuf[R- 1][P]>>1))|| //top left to bottom right
+(RowValue= mtxBuf[R][P]& (mtxBuf[R-3][P]<<3)&(mtxBuf[R- 2][P]<<2)&(mtxBuf[R-1][P]<<1))|| //top right to bottom left
+(RowValue= mtxBuf[R][P]&(mtxBuf[R+3][P]>>3)&(mtxBuf[R+2][P]>>2)&(mtxBuf[R+1][P]>>1))|| //bottom left to top right
+(RowValue= mtxBuf[R][P]& (mtxBuf[R+3][P]<<3)&(mtxBuf[R+2][P]<<2)&(mtxBuf[R+1][P]<<1))){ //bottom right to top left
+w=1;
+}
+
+//diagonal win 2nd top --> down and diagonal win 2nd bottom --> top
+if((RowValue= mtxBuf[R][P]& (mtxBuf[R+1][P]<<1)&(mtxBuf[R-1][P]>>1)&(mtxBuf[R- 2][P]>>2))|| //2nd top right, down left
+(RowValue= mtxBuf[R][P]& (mtxBuf[R+1][P]>>1)&(mtxBuf[R- 1][P]<<1)&(mtxBuf[R-2][P]<<2))|| //2nd top left, down right
+(RowValue= mtxBuf[R][P]& (mtxBuf[R+1][P]<<1)&(mtxBuf[R+2][P]<<2)&(mtxBuf[R-1][P]>>1))|| //2nd bottom left, tops on right
+(RowValue= mtxBuf[R][P]& (mtxBuf[R+1][P]>>1)&(mtxBuf[R+2][P]>>2)&(mtxBuf[R -1][P]<<1))){ //2nd bottom right, tops on left
+w=1;
+}
+
+return w;
+}
+
+void scorelookup(unsigned int ledNum,int player){
+static unsigned int lookup[]=
+{0x2B6A,0x2697,0x388F,0x38A3,0x1BE4,0x73E3,0x63EF,0x7889,0x7BEF,0x7BE3};    //0-9
+stored ScoreShift(lookup[ledNum],player);
+}
+
+void ScoreShift(unsigned int val,int player){
+unsigned int Row = 1;
+unsigned int Hold;
+for(Row=1;Row<=5;Row++){
+Hold = val; //makes hold equal to val so that vals value isnt changed by anding.
+Hold&=0x0007;	//ands hold with the last three bits as the values are in a 5x3 , so we need 3 "lights" at a time.
+BGR[Row][player]=0x00;
+if(player==2){ 
+BGR[Row][player]|=(Hold<<5);
+}else{
+BGR[Row][player]|=Hold;
+}
+val>>=3;	//shifts value to the right as to get the nexts rows 3 "lights"
+}
+lightMtx(BGR);
+}
